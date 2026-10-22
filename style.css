@@ -20,3 +20,18 @@ main{flex:1;position:relative;min-height:0}.tab{display:none;position:absolute;i
 .help{padding:10px 30px;overflow:auto;line-height:1.6}.help code{background:#17223f;padding:1px 5px;border-radius:4px}a{color:#7fd1ff}
 .cm-s-material-darker .cm-keyword{color:#c792ea;font-weight:bold}.cm-s-material-darker .cm-builtin{color:#82aaff}.cm-s-material-darker .cm-atom{color:#f78c6c}
 .blocklyTreeLabel{color:#dce6ff!important}.blocklyToolboxDiv{background:#0f1730!important}
+.tab.scroll{overflow-y:auto;display:none}.tab.scroll.active{display:block}
+.primary{background:#1f6f4a;border-color:#3fbf80;font-weight:bold}.primary:hover{background:#278a5c}
+.simgrid{display:grid;grid-template-columns:minmax(380px,1.2fr) minmax(360px,1fr) minmax(300px,1fr);gap:10px;padding:10px}
+.card{background:#0b1226cc;border:1px solid #24345e;border-radius:8px;padding:8px 10px;min-width:0}
+.card h4,.pyh{margin:6px 0;color:#7fd1ff;font-size:13px}.pyh{padding:0 10px}
+#stageTbl{border-collapse:collapse;font-size:12px;width:100%}#stageTbl th{color:#9fb3e0;font-weight:normal;text-align:left;padding:2px}
+#stageTbl input{width:100%;padding:3px 4px;font-size:12px}#stageTbl td{padding:1px}
+.opts{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px}.opts input[type=number]{width:80px;padding:3px}
+.wide{width:100%;margin-bottom:4px}.hint2{font-size:11px;color:#8090b8}
+.summary{font-size:13px;line-height:1.5}.summary .oc{font-size:18px;font-weight:bold}.oc.ORBIT,.oc.LANDED{color:#8ff0b0}.oc.CRASHED,.oc.TIMEOUT{color:#ff8080}.oc.SUBORBITAL,.oc.ESCAPED{color:#ffc27a}
+.summary table td{padding:0 10px 0 0}#trajCv{width:100%;background:#03050c;border-radius:6px;margin-top:6px}
+.term{background:#020a04;color:#4dff88;font:11px/1.25 monospace;padding:6px;margin:0;height:220px;overflow:auto;white-space:pre;border-radius:4px}
+.term.log{height:150px;color:#b8f5c8}#simWarn{font-size:12px;color:#ffc27a;margin-top:4px}
+.charts{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:0 10px}.charts canvas{width:100%;background:#060a16;border:1px solid #24345e;border-radius:6px}
+.pyrow{height:420px;margin:0 10px 10px;border:1px solid #24345e}

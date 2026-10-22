@@ -63,10 +63,10 @@ function refreshTune(){ const t=findTunables(), sig=t.map(x=>x.name).join(','); 
 const KEY='kosblocks.projects';
 const projects=()=>JSON.parse(localStorage.getItem(KEY)||'{}');
 function refreshLoad(){ const p=projects(); $('#loadSel').innerHTML='<option value="">📂 Load…</option>'+Object.keys(p).map(k=>`<option>${k}</option>`).join(''); }
-$('#saveBtn').onclick=()=>{ const p=projects(); p[$('#projName').value||'untitled']={ws:Blockly.serialization.workspaces.save(ws),code:getCode(),linked,pureCode,saved:Date.now()}; localStorage.setItem(KEY,JSON.stringify(p)); refreshLoad(); flash('Saved'); };
+$('#saveBtn').onclick=()=>{ const p=projects(); p[$('#projName').value||'untitled']={vessel,ws:Blockly.serialization.workspaces.save(ws),code:getCode(),linked,pureCode,saved:Date.now()}; localStorage.setItem(KEY,JSON.stringify(p)); refreshLoad(); flash('Saved'); };
 $('#loadSel').onchange=e=>{ const d=projects()[e.target.value]; if(!d) return; $('#projName').value=e.target.value; loadProject(d); e.target.value=''; };
 $('#delBtn').onclick=()=>{ const n=$('#projName').value,p=projects(); if(p[n]&&confirm('Delete project '+n+'?')){delete p[n];localStorage.setItem(KEY,JSON.stringify(p));refreshLoad();} };
-function loadProject(d){ ws.clear(); if(d.ws) Blockly.serialization.workspaces.load(d.ws,ws); setMode(d.pureCode?'code':'blocks'); if(!d.linked||d.pureCode){ setLinked(false); suppress=true; cm.setValue(d.code||''); suppress=false; lint(); refreshTune(); } }
+function loadProject(d){ if(d.vessel){vessel=d.vessel;saveVessel();renderVessel();} ws.clear(); if(d.ws) Blockly.serialization.workspaces.load(d.ws,ws); setMode(d.pureCode?'code':'blocks'); if(!d.linked||d.pureCode){ setLinked(false); suppress=true; cm.setValue(d.code||''); suppress=false; lint(); refreshTune(); } }
 function flash(m){ const s=$('#linkState'),o=s.textContent; s.textContent=m; setTimeout(()=>s.textContent=o,1200); }
 
 // ---- Import / export ----
@@ -77,56 +77,115 @@ $('#exportJson').onclick=()=>download(($('#projName').value||'project')+'.blocks
 $('#importJson').onchange=async e=>{ const f=e.target.files[0]; if(!f) return; try{ ws.clear(); Blockly.serialization.workspaces.load(JSON.parse(await f.text()),ws); setMode('blocks'); setLinked(true); showTab('blocks'); }catch(err){alert('Invalid workspace JSON: '+err.message);} e.target.value=''; };
 $('#copyBtn').onclick=()=>navigator.clipboard&&navigator.clipboard.writeText(getCode()).then(()=>flash('Copied'));
 
-// ---- Python (Pyodide) ----
-const PY_DEFAULT=`# KSP helpers are preloaded: KERBIN_R, KERBIN_MU, G0, delta_v, twr, orbital_velocity,
-# hohmann, burn_time, suicide_burn_altitude.  Use kos.get_code(), kos.set_code(s), kos.set_var(name, value)
+// ---- Simulation + Python (Pyodide) ----
+const PRESETS={
+ orbital:{name:'Kerbal X-lite',stages:[{name:'Booster',wet:18,dry:2.5,thrust_vac:330,thrust_sl:300,isp_vac:310,isp_sl:270,cda:4},{name:'Upper',wet:6,dry:1.5,thrust_vac:60,thrust_sl:15,isp_vac:345,isp_sl:85,cda:0.6}],start:{mode:'pad',alt:0,vx:0,vy:0,active:false},rotation:true,turn_rate:12,tmax:1800,dt:0.05,coast_after_end:true},
+ lander:{name:'Lander',stages:[{name:'Lander',wet:4,dry:2,thrust_vac:60,thrust_sl:55,isp_vac:320,isp_sl:280,cda:1}],start:{mode:'air',alt:8000,vx:0,vy:-150,active:true},rotation:true,turn_rate:20,tmax:900,dt:0.05,coast_after_end:true},
+ booster:{name:'Booster',stages:[{name:'Booster',wet:10,dry:3,thrust_vac:330,thrust_sl:300,isp_vac:310,isp_sl:270,cda:4}],start:{mode:'air',alt:35000,vx:900,vy:400,active:true},rotation:true,turn_rate:15,tmax:900,dt:0.05,coast_after_end:true}};
+let vessel=JSON.parse(localStorage.getItem('kosblocks.vessel')||'null')||JSON.parse(JSON.stringify(PRESETS.orbital));
+const SCOLS=[['name','name'],['wet','wet t'],['dry','dry t'],['thrust_vac','F vac'],['thrust_sl','F sl'],['isp_vac','Isp vac'],['isp_sl','Isp sl'],['cda','Cd·A']];
+function renderVessel(){ $('#vName').value=vessel.name||'';
+  $('#stageTbl').innerHTML='<tr><th>#</th>'+SCOLS.map(c=>`<th>${c[1]}</th>`).join('')+'<th></th></tr>'+vessel.stages.map((s,i)=>`<tr><td>${i+1}</td>`+SCOLS.map(c=>`<td><input data-i="${i}" data-k="${c[0]}" ${c[0]==='name'?'':'type="number" step="any"'} value="${s[c[0]]}"></td>`).join('')+`<td><button data-del="${i}">✕</button></td></tr>`).join('');
+  const st=vessel.start; $('#sMode').value=st.mode; $('#sAlt').value=st.alt; $('#sVx').value=st.vx; $('#sVy').value=st.vy; $('#sActive').checked=!!st.active;
+  $('#oRot').checked=vessel.rotation!==false; $('#oTurn').value=vessel.turn_rate; $('#oTmax').value=vessel.tmax; $('#oDt').value=vessel.dt; $('#oCoast').checked=vessel.coast_after_end!==false;
+  $('#stageTbl').querySelectorAll('input').forEach(inp=>inp.onchange=()=>{const s=vessel.stages[inp.dataset.i]; s[inp.dataset.k]=inp.dataset.k==='name'?inp.value:parseFloat(inp.value)||0; saveVessel();});
+  $('#stageTbl').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ if(vessel.stages.length>1){vessel.stages.splice(+b.dataset.del,1);saveVessel();renderVessel();} }); }
+function readOpts(){ vessel.name=$('#vName').value; Object.assign(vessel.start,{mode:$('#sMode').value,alt:+$('#sAlt').value||0,vx:+$('#sVx').value||0,vy:+$('#sVy').value||0,active:$('#sActive').checked});
+  Object.assign(vessel,{rotation:$('#oRot').checked,turn_rate:+$('#oTurn').value||10,tmax:+$('#oTmax').value||1800,dt:Math.min(0.5,Math.max(0.01,+$('#oDt').value||0.05)),coast_after_end:$('#oCoast').checked}); saveVessel(); }
+function saveVessel(){ localStorage.setItem('kosblocks.vessel',JSON.stringify(vessel)); }
+['#vName','#sMode','#sAlt','#sVx','#sVy','#sActive','#oRot','#oTurn','#oTmax','#oDt','#oCoast'].forEach(s=>$(s).onchange=readOpts);
+$('#addStage').onclick=()=>{ vessel.stages.push({name:'Stage '+(vessel.stages.length+1),wet:4,dry:1,thrust_vac:60,thrust_sl:15,isp_vac:345,isp_sl:85,cda:0.5}); saveVessel(); renderVessel(); };
+$('#preset').onchange=e=>{ if(PRESETS[e.target.value]){ vessel=JSON.parse(JSON.stringify(PRESETS[e.target.value])); saveVessel(); renderVessel(); } e.target.value=''; };
+renderVessel();
 
-alt = 80_000
-print("Circular v @ 80 km:", round(orbital_velocity(alt), 1), "m/s")
-print("Hohmann 80 km -> 250 km dv:", [round(x, 1) for x in hohmann(80_000, 250_000)])
-print("Stage dv (isp 320, 12t -> 5t):", round(delta_v(320, 12, 5), 1), "m/s")
-print("TWR (215 kN, 12 t):", round(twr(215, 12), 2))
-print("Burn time 900 m/s, 215 kN, isp 320, 12 t:", round(burn_time(900, 215, 320, 12), 1), "s")
-print("Suicide burn start (v=150 m/s, 60 kN, 4 t):", round(suicide_burn_altitude(150, 60, 4), 1), "m")
+// --- drawing
+function drawChart(cv,xs,ys,title,color,unit){ const c=cv.getContext('2d'),W=cv.width,H=cv.height,L=46,B=20,T=18; c.clearRect(0,0,W,H);
+  c.fillStyle='#9fb3e0';c.font='12px system-ui';c.fillText(title,L,13); if(!xs||xs.length<2) return;
+  let x0=xs[0],x1=xs[xs.length-1]||1,y0=Math.min(...ys),y1=Math.max(...ys); if(y1-y0<1e-9){y1+=1;y0-=y0===0?0:1;} if(y0>0&&y0<(y1-y0)*0.5) y0=0;
+  const X=x=>L+(x-x0)/(x1-x0||1)*(W-L-8), Y=y=>H-B-(y-y0)/(y1-y0)*(H-B-T);
+  c.strokeStyle='#1b2747';c.fillStyle='#7080a8';c.font='10px monospace';
+  for(let i=0;i<=4;i++){const v=y0+(y1-y0)*i/4,yy=Y(v);c.beginPath();c.moveTo(L,yy);c.lineTo(W-8,yy);c.stroke();c.fillText(fmt(v),2,yy+3);}
+  for(let i=0;i<=4;i++){const v=x0+(x1-x0)*i/4;c.fillText(Math.round(v)+'s',X(v)-10,H-5);}
+  c.strokeStyle=color;c.lineWidth=1.6;c.beginPath();xs.forEach((x,i)=>i?c.lineTo(X(x),Y(ys[i])):c.moveTo(X(x),Y(ys[i])));c.stroke();c.lineWidth=1;
+  c.fillStyle=color;c.fillText(unit,W-40,13); }
+function fmt(v){const a=Math.abs(v);return a>=1e6?(v/1e6).toFixed(1)+'M':a>=1e4?(v/1e3).toFixed(0)+'k':a>=1000?(v/1e3).toFixed(1)+'k':a>=10?v.toFixed(0):v.toFixed(2);}
+function drawTraj(cv,S){ const c=cv.getContext('2d'),W=cv.width,H=cv.height,R=600000,A=670000; c.clearRect(0,0,W,H);
+  const px=S.y.map(Number), py=S.x.map(Number); // rotate so launch site is at top, east to the right
+  let mnx=Math.min(...px),mxx=Math.max(...px),mny=Math.min(...py),mxy=Math.max(...py);
+  if(Math.max(mxx-mnx,mxy-mny)>0.25*R){mnx=Math.min(mnx,-R);mxx=Math.max(mxx,R);mny=Math.min(mny,-R);mxy=Math.max(mxy,R);}
+  let span=Math.max(mxx-mnx,mxy-mny,4000)*1.15, cx=(mnx+mxx)/2, cy=(mny+mxy)/2, k=Math.min(W,H)/span;
+  const X=x=>W/2+(x-cx)*k, Y=y=>H/2-(y-cy)*k;
+  c.fillStyle='#0d2a4a';c.beginPath();c.arc(X(0),Y(0),A*k,0,7);c.fill();
+  c.fillStyle='#1f5a2e';c.beginPath();c.arc(X(0),Y(0),R*k,0,7);c.fill();
+  c.strokeStyle='#ffd166';c.lineWidth=2;c.beginPath();px.forEach((x,i)=>i?c.lineTo(X(x),Y(py[i])):c.moveTo(X(x),Y(py[i])));c.stroke();c.lineWidth=1;
+  c.fillStyle='#ff6b6b';c.beginPath();c.arc(X(px[px.length-1]),Y(py[py.length-1]),4,0,7);c.fill();
+  c.fillStyle='#9fb3e0';c.font='11px system-ui';c.fillText('Trajectory, inertial frame (Kerbin green, atmosphere blue) – view '+fmt(span)+' m',6,H-6); }
+function showSim(json){ const r=typeof json==='string'?JSON.parse(json):json, s=r.summary, S=r.series;
+  $('#simSummary').innerHTML=`<div class="oc ${s.outcome}">${s.outcome}</div><div>${s.reason||''}</div><table>
+  <tr><td>Sim time</td><td>${s.time} s</td><td>Max alt</td><td>${s.max_alt.toLocaleString()} m</td></tr>
+  <tr><td>Apoapsis</td><td>${s.apoapsis.toLocaleString()} m</td><td>Periapsis</td><td>${s.periapsis.toLocaleString()} m</td></tr>
+  <tr><td>Δv used</td><td>${s.dv_used} m/s</td><td>Fuel left</td><td>${s.fuel_left_t} t</td></tr>
+  <tr><td>Max speed</td><td>${s.max_speed} m/s</td><td>Max Q</td><td>${s.max_q_kpa} kPa</td></tr>
+  <tr><td>Final speed</td><td>${s.final_speed} m/s</td><td>Mass</td><td>${s.mass_t} t</td></tr></table>`;
+  $('#simScreen').textContent=r.screen.join('\n').replace(/\s+$/,'');
+  const L=r.log.map(([t,x])=>`[${t.toFixed(1).padStart(7)}s] ${x}`).concat(r.events.map(([t,x])=>`[${t.toFixed(1).padStart(7)}s] ★ ${x}`));
+  L.sort(); $('#simLog').textContent=L.join('\n');
+  $('#simWarn').innerHTML=(s.error?`<div>⛔ ${s.error}</div>`:'')+r.warnings.map(w=>`<div>⚠ ${w}</div>`).join('');
+  drawTraj($('#trajCv'),S); drawChart($('#cAlt'),S.t,S.alt,'Altitude','#7fd1ff','m'); drawChart($('#cSpd'),S.t,S.speed,'Surface speed','#ffd166','m/s');
+  drawChart($('#cThr'),S.t,S.throttle,'Throttle','#ff8fab','0–1'); drawChart($('#cMass'),S.t,S.mass,'Mass','#8ff0b0','t'); window.lastSim=r; }
 
-# Tune the kOS script from Python:
-print("Tunables:", kos.get_vars())
-kos.set_var("targetAlt", 85000)
-print("Set targetAlt -> 85000")
+const PY_DEFAULT=`# --- kOS flight simulator API -------------------------------------------
+#   sim.run(code=None, vessel=None, show=True, **opts)  -> result (r["outcome"], r["apoapsis"], ...)
+#   sim.sweep(var, values, ...)   run once per value of a top-level 'SET var TO n.'
+#   sim.code() / sim.vessel()     current script / vessel config (dicts are editable)
+#   kos.get_code(), kos.set_code(s), kos.set_var(name, value)
+# KSP math: KERBIN_R, KERBIN_MU, G0, delta_v, twr, orbital_velocity, hohmann, burn_time, suicide_burn_altitude
+
+r = sim.run()                       # simulate the current script with the vessel panel config
+print(r)
+
+# Parameter sweep: which gravity-turn end altitude reaches orbit with the most fuel left?
+results = sim.sweep("turnEnd", [25000, 35000, 45000, 55000, 65000])
+orbits = [(v, res) for v, res in results if res["outcome"] == "ORBIT"]
+if orbits:
+    best_v, best = max(orbits, key=lambda vr: vr[1]["fuel_left_t"])
+    print(f"Best turnEnd = {best_v}  (fuel left {best['fuel_left_t']} t)")
+    kos.set_var("turnEnd", best_v)  # write it back into the blocks/code
+    sim.run()                       # show the tuned flight
+
+# What-if: heavier upper stage
+v = sim.vessel(); v["stages"][-1]["wet"] += 2
+print("Heavier upper stage:", sim.run(vessel=v, show=False))
+
+print("Theory: circular speed @80 km =", round(orbital_velocity(80000), 1), "m/s,",
+      "Hohmann 80->250 km =", round(hohmann(80000, 250000)[2], 1), "m/s")
 `;
 const PY_HELPERS=`
-import math, re
+import math, re, json
+import kossim
 KERBIN_R = 600000.0
 KERBIN_MU = 3.5316e12
 G0 = 9.80665
 def orbital_velocity(alt, mu=KERBIN_MU, R=KERBIN_R):
-    """Circular orbit speed (m/s) at altitude alt (m)."""
     return math.sqrt(mu / (R + alt))
 def vis_viva(r, a, mu=KERBIN_MU):
     return math.sqrt(mu * (2 / r - 1 / a))
 def delta_v(isp, m_wet, m_dry):
-    """Tsiolkovsky rocket equation. masses in any consistent unit."""
     return isp * G0 * math.log(m_wet / m_dry)
 def twr(thrust_kN, mass_t, g=G0):
     return thrust_kN / (mass_t * g)
 def hohmann(alt1, alt2, mu=KERBIN_MU, R=KERBIN_R):
-    """Returns (dv1, dv2, total) for circular alt1 -> circular alt2."""
     r1, r2 = R + alt1, R + alt2
     a = (r1 + r2) / 2
     dv1 = vis_viva(r1, a, mu) - math.sqrt(mu / r1)
     dv2 = math.sqrt(mu / r2) - vis_viva(r2, a, mu)
     return (dv1, dv2, abs(dv1) + abs(dv2))
 def burn_time(dv, thrust_kN, isp, mass_t):
-    """Burn duration (s) accounting for mass loss."""
     ve = isp * G0
-    m0 = mass_t * 1000
-    mdot = thrust_kN * 1000 / ve
-    return m0 * (1 - math.exp(-dv / ve)) / mdot
+    return mass_t * 1000 * (1 - math.exp(-dv / ve)) / (thrust_kN * 1000 / ve)
 def suicide_burn_altitude(v, thrust_kN, mass_t, g=G0):
-    """Altitude (m) to start a full-throttle burn to stop from speed v (m/s)."""
     a = thrust_kN / mass_t - g
-    if a <= 0: return float('inf')
-    return v * v / (2 * a)
+    return float('inf') if a <= 0 else v * v / (2 * a)
 class _Kos:
     def get_code(self): return _js.getCode()
     def set_code(self, s): _js.setCode(str(s))
@@ -137,21 +196,46 @@ class _Kos:
         if not ok: print(f"[kos] no top-level 'SET {name} TO <number>.' found")
         return ok
 kos = _Kos()
+class _SimAPI:
+    DEFAULT_VESSEL = kossim.DEFAULT_VESSEL
+    def code(self): return _js.getCode()
+    def vessel(self): return json.loads(_js.getVessel())
+    def run(self, code=None, vessel=None, show=True, **opts):
+        r = kossim.run(code if code is not None else self.code(), vessel or self.vessel(), **opts)
+        if show: _js.showSim(r.to_json())
+        return r
+    def sweep(self, var, values, code=None, vessel=None, show=False, **opts):
+        code = code if code is not None else self.code(); vessel = vessel or self.vessel()
+        print(f"{var:>12} | {'outcome':<10} | {'Ap m':>9} | {'Pe m':>9} | {'dv m/s':>8} | {'fuel t':>6}")
+        print("-" * 70)
+        out = []
+        for v in values:
+            r = kossim.run(kossim.set_var_in_code(code, var, v), vessel, **opts)
+            s = r.summary
+            print(f"{v:>12} | {s['outcome']:<10} | {s['apoapsis']:>9} | {s['periapsis']:>9} | {s['dv_used']:>8} | {s['fuel_left_t']:>6}")
+            out.append((v, r))
+        return out
+sim = _SimAPI()
 `;
-const pyEd=CodeMirror($('#pyWrap'),{mode:'python',theme:'material-darker',lineNumbers:true,value:localStorage.getItem('kosblocks.py')||PY_DEFAULT,indentUnit:4});
-pyEd.on('change',()=>localStorage.setItem('kosblocks.py',pyEd.getValue()));
+const pyEd=CodeMirror($('#pyWrap'),{mode:'python',theme:'material-darker',lineNumbers:true,value:localStorage.getItem('kosblocks.py2')||PY_DEFAULT,indentUnit:4});
+pyEd.on('change',()=>localStorage.setItem('kosblocks.py2',pyEd.getValue()));
 $('#resetPy').onclick=()=>pyEd.setValue(PY_DEFAULT);
 let pyodide=null;
 async function ensurePy(){ if(pyodide) return pyodide; $('#pyStatus').textContent='Loading Pyodide…';
   await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js';s.onload=res;s.onerror=()=>rej(new Error('Could not load Pyodide (offline?)'));document.head.appendChild(s);});
-  pyodide=await loadPyodide(); pyodide.registerJsModule('_kosbridge',{getCode,setCode,setVar:(n,v)=>{const r=setVar(n,v);refreshTune();return r;}});
-  pyodide.runPython('import _kosbridge as _js\n'+PY_HELPERS); $('#pyStatus').textContent='Pyodide ready'; return pyodide; }
-$('#runPy').onclick=async()=>{ const out=$('#pyOut'); out.textContent='';
+  const py=await loadPyodide(); const src=await (await fetch('sim.py')).text(); py.FS.writeFile('/home/pyodide/kossim.py',src);
+  py.registerJsModule('_kosbridge',{getCode,setCode,setVar:(n,v)=>{const r=setVar(n,v);refreshTune();regenNow();return r;},getVessel:()=>{readOpts();return JSON.stringify(vessel);},showSim});
+  py.runPython('import sys\nsys.path.insert(0,"/home/pyodide")\nimport _kosbridge as _js\n'+PY_HELPERS); pyodide=py; $('#pyStatus').textContent='Pyodide ready'; return py; }
+function regenNow(){ if(linked&&!pureCode){ const code=KOS.workspaceToCode(ws); suppress=true; cm.setValue(code); suppress=false; $('#livePreview').textContent=code; lint(); } }
+async function runPython(src,label){ const out=$('#pyOut');
   try{ const py=await ensurePy(); py.setStdout({batched:s=>out.textContent+=s+'\n'}); py.setStderr({batched:s=>out.textContent+=s+'\n'});
-    $('#pyStatus').textContent='Running…'; await py.runPythonAsync(pyEd.getValue()); $('#pyStatus').textContent='Done ✔'; }
-  catch(e){ out.textContent+='\n'+e.message; $('#pyStatus').textContent='Error'; } };
+    $('#pyStatus').textContent=label+'…'; await new Promise(r=>setTimeout(r,30)); const t0=performance.now();
+    await py.runPythonAsync(src); $('#pyStatus').textContent=`Done ✔ (${((performance.now()-t0)/1000).toFixed(1)} s)`; return true; }
+  catch(e){ out.textContent+='\n'+e.message; $('#pyStatus').textContent='Error'; return false; } }
+$('#runPy').onclick=()=>{ $('#pyOut').textContent=''; readOpts(); regenNow(); return runPython(pyEd.getValue(),'Running'); };
+$('#simBtn').onclick=()=>{ readOpts(); regenNow(); $('#pyOut').textContent=''; return runPython('print(sim.run())','Simulating'); };
 
 // ---- boot ----
 refreshLoad();
 Blockly.serialization.workspaces.load(DEFAULT_WS,ws); regen();
-window.kosApp={ws,cm,getCode,setCode,setVar,lint};
+window.kosApp={ws,cm,getCode,setCode,setVar,lint,showSim,get vessel(){return vessel}};

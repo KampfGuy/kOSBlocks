@@ -13,7 +13,7 @@
 <script src="https://unpkg.com/codemirror@5.65.16/mode/python/python.js"></script>
 </head><body>
 <header><div class="logo">🚀 kOS<b>Blocks</b></div>
-<nav id="tabs"><button data-tab="blocks" class="active">Blocks</button><button data-tab="code">Code</button><button data-tab="python">Python</button><button data-tab="tune">Tune</button><button data-tab="help">Help</button></nav>
+<nav id="tabs"><button data-tab="blocks" class="active">Blocks</button><button data-tab="code">Code</button><button data-tab="python">Simulate / Python</button><button data-tab="tune">Tune</button><button data-tab="help">Help</button></nav>
 <div class="proj">
 <select id="mode" title="Editing mode"><option value="blocks">Mode: Blocks → Code</option><option value="code">Mode: Pure Code</option></select>
 <input id="projName" value="my_project" title="Project name"><button id="saveBtn">💾 Save</button><select id="loadSel"><option value="">📂 Load…</option></select><button id="delBtn" title="Delete selected project">🗑</button>
@@ -28,12 +28,29 @@
 <button id="exportJson">⬇ Blocks JSON</button><label class="btn">⬆ Blocks JSON<input type="file" id="importJson" accept=".json" hidden></label>
 <button id="copyBtn">📋 Copy</button></div>
 <div id="codeWrap"></div><div id="lint"></div></section>
-<section id="tab-python" class="tab"><div class="bar"><button id="runPy">▶ Run Python</button><span id="pyStatus" class="pill">Pyodide not loaded (loads on first run)</span><button id="resetPy">↺ Reset helpers example</button></div>
-<div class="split"><div id="pyWrap"></div><pre id="pyOut"></pre></div></section>
+<section id="tab-python" class="tab scroll">
+<div class="bar"><button id="simBtn" class="primary">🛰 Simulate current script</button>
+<select id="preset" title="Vessel preset"><option value="">Vessel preset…</option><option value="orbital">2-stage orbital rocket (pad)</option><option value="lander">Lander (8 km, falling 150 m/s)</option><option value="booster">Booster (35 km, after MECO)</option></select>
+<button id="runPy">▶ Run custom Python</button><button id="resetPy">↺ Reset example</button><span id="pyStatus" class="pill">Pyodide loads on first run</span></div>
+<div class="simgrid">
+ <div class="card"><h4>Vessel</h4><input id="vName" class="wide" title="Vessel name"><table id="stageTbl"></table>
+  <button id="addStage">+ stage</button> <span class="hint2">Row 1 fires first (bottom stage). Masses t, thrust kN, Isp s, Cd·A m².</span>
+  <h4>Start</h4><div class="opts"><label>mode <select id="sMode"><option value="pad">launch pad</option><option value="air">in flight</option></select></label>
+  <label>alt m <input id="sAlt" type="number"></label><label>horiz m/s <input id="sVx" type="number"></label><label>vert m/s <input id="sVy" type="number"></label>
+  <label><input id="sActive" type="checkbox"> stage 1 already active</label></div>
+  <h4>Options</h4><div class="opts"><label><input id="oRot" type="checkbox"> Kerbin rotation (174.94 m/s)</label><label>turn rate °/s <input id="oTurn" type="number" step="any"></label>
+  <label>max time s <input id="oTmax" type="number"></label><label>dt s <input id="oDt" type="number" step="0.01"></label><label><input id="oCoast" type="checkbox"> keep coasting after program ends</label></div></div>
+ <div class="card"><h4>Result</h4><div id="simSummary" class="summary">Press <b>Simulate</b>.</div><canvas id="trajCv" width="460" height="340"></canvas></div>
+ <div class="card"><h4>kOS terminal (final screen)</h4><pre id="simScreen" class="term"></pre><h4>Output log &amp; events</h4><pre id="simLog" class="term log"></pre><div id="simWarn"></div></div>
+</div>
+<div class="charts"><canvas id="cAlt" width="360" height="170"></canvas><canvas id="cSpd" width="360" height="170"></canvas><canvas id="cThr" width="360" height="170"></canvas><canvas id="cMass" width="360" height="170"></canvas></div>
+<h4 class="pyh">Custom Python (<code>sim</code>, <code>kos</code> and KSP math helpers available)</h4>
+<div class="split pyrow"><div id="pyWrap"></div><pre id="pyOut"></pre></div></section>
 <section id="tab-tune" class="tab"><p class="hint">Top-level <code>SET name TO number.</code> lines are detected automatically. Changes are written into the code (in block mode, the matching block field is updated).</p><div id="tuneList"></div></section>
 <section id="tab-help" class="tab help"><h2>Quick guide</h2><ol>
 <li>Drag blocks from the left (Flight, Telemetry, Logic…) or grab a ready-made <b>Template</b>.</li>
 <li>Watch the kerboscript appear live. Switch to <b>Code</b> to see it highlighted & linted.</li>
+<li><b>Simulate / Python</b>: runs your script in a built-in kerboscript interpreter with 2D Kerbin physics – see terminal output, charts, trajectory and outcome before flying. Write Python with <code>sim.run()</code> / <code>sim.sweep("turnEnd",[30000,45000,60000])</code> to tune.</li>
 <li>Use <b>Tune</b> to tweak numbers, or <b>Python</b> for KSP math (Δv, TWR, Hohmann…) and to rewrite values with <code>kos.set_var("targetAlt", 90000)</code>.</li>
 <li>Click <b>Export .ks</b>. Put the file into <code>Kerbal Space Program/Ships/Script/</code> (the Archive, volume 0).</li>
 <li>In game, open the kOS terminal on your vessel: <code>SWITCH TO 0.</code> then <code>RUNPATH("boot_launch").</code> (or <code>RUNPATH("0:/boot_launch.ks").</code>).</li>
