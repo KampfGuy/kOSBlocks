@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>kOSBlocks – Scratch-style kOS scripting</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚀</text></svg>">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/codemirror@5.65.16/lib/codemirror.css">
+<link rel="stylesheet" href="https://unpkg.com/codemirror@5.65.16/theme/material-darker.css">
+<link rel="stylesheet" href="style.css">
+<script src="https://unpkg.com/blockly@10.4.3/blockly_compressed.js"></script>
+<script src="https://unpkg.com/blockly@10.4.3/blocks_compressed.js"></script>
+<script src="https://unpkg.com/blockly@10.4.3/msg/en.js"></script>
+<script src="https://unpkg.com/codemirror@5.65.16/lib/codemirror.js"></script>
+<script src="https://unpkg.com/codemirror@5.65.16/addon/mode/simple.js"></script>
+<script src="https://unpkg.com/codemirror@5.65.16/mode/python/python.js"></script>
+</head><body>
+<header><div class="logo">🚀 kOS<b>Blocks</b></div>
+<nav id="tabs"><button data-tab="blocks" class="active">Blocks</button><button data-tab="code">Code</button><button data-tab="python">Python</button><button data-tab="tune">Tune</button><button data-tab="help">Help</button></nav>
+<div class="proj">
+<select id="mode" title="Editing mode"><option value="blocks">Mode: Blocks → Code</option><option value="code">Mode: Pure Code</option></select>
+<input id="projName" value="my_project" title="Project name"><button id="saveBtn">💾 Save</button><select id="loadSel"><option value="">📂 Load…</option></select><button id="delBtn" title="Delete selected project">🗑</button>
+</div></header>
+<main>
+<section id="tab-blocks" class="tab active"><div id="blocklyDiv"></div><div class="side"><h3>Live kerboscript</h3><pre id="livePreview"></pre></div></section>
+<section id="tab-code" class="tab"><div class="bar">
+<label><input type="checkbox" id="editSelf"> ✏️ Edit code myself (unlink from blocks)</label>
+<span id="linkState" class="pill">linked to blocks</span>
+<input id="fileName" value="boot_launch.ks" title=".ks filename"><button id="exportKs">⬇ Export .ks</button>
+<label class="btn">⬆ Import .ks<input type="file" id="importKs" accept=".ks,.txt" hidden></label>
+<button id="exportJson">⬇ Blocks JSON</button><label class="btn">⬆ Blocks JSON<input type="file" id="importJson" accept=".json" hidden></label>
+<button id="copyBtn">📋 Copy</button></div>
+<div id="codeWrap"></div><div id="lint"></div></section>
+<section id="tab-python" class="tab"><div class="bar"><button id="runPy">▶ Run Python</button><span id="pyStatus" class="pill">Pyodide not loaded (loads on first run)</span><button id="resetPy">↺ Reset helpers example</button></div>
+<div class="split"><div id="pyWrap"></div><pre id="pyOut"></pre></div></section>
+<section id="tab-tune" class="tab"><p class="hint">Top-level <code>SET name TO number.</code> lines are detected automatically. Changes are written into the code (in block mode, the matching block field is updated).</p><div id="tuneList"></div></section>
+<section id="tab-help" class="tab help"><h2>Quick guide</h2><ol>
+<li>Drag blocks from the left (Flight, Telemetry, Logic…) or grab a ready-made <b>Template</b>.</li>
+<li>Watch the kerboscript appear live. Switch to <b>Code</b> to see it highlighted & linted.</li>
+<li>Use <b>Tune</b> to tweak numbers, or <b>Python</b> for KSP math (Δv, TWR, Hohmann…) and to rewrite values with <code>kos.set_var("targetAlt", 90000)</code>.</li>
+<li>Click <b>Export .ks</b>. Put the file into <code>Kerbal Space Program/Ships/Script/</code> (the Archive, volume 0).</li>
+<li>In game, open the kOS terminal on your vessel: <code>SWITCH TO 0.</code> then <code>RUNPATH("boot_launch").</code> (or <code>RUNPATH("0:/boot_launch.ks").</code>).</li>
+<li>Boot scripts: put the file in <code>Ships/Script/boot/</code> and choose it as the boot file in the VAB part menu of the kOS CPU.</li></ol>
+<h3>Tips</h3><ul><li>Every statement ends with a period <code>.</code>; blocks use <code>{ }</code>.</li>
+<li><code>LOCK</code> re-evaluates every tick; <code>SET</code> evaluates once.</li>
+<li>Always end launches with <code>UNLOCK STEERING. UNLOCK THROTTLE.</code> and set <code>SHIP:CONTROL:PILOTMAINTHROTTLE TO 0.</code></li>
+<li>"Edit code myself" lets you type freely; switching back to blocks regenerates code from blocks and discards text edits.</li>
+<li>Projects are saved in your browser's localStorage.</li></ul>
+<p>kOS docs: <a href="https://ksp-kos.github.io/KOS/" target="_blank">ksp-kos.github.io/KOS</a></p></section>
+</main>
+<script src="blocks.js"></script><script src="app.js"></script>
+</body></html>
