@@ -16,7 +16,14 @@ function regen(){ if(!linked||pureCode) return; const code=KOS.workspaceToCode(w
 // drag can make Blockly drags stutter/fail on slower machines).
 let regenTimer=null;
 function scheduleRegen(){ clearTimeout(regenTimer); regenTimer=setTimeout(()=>{ if(ws.isDragging&&ws.isDragging()){scheduleRegen();return;} regen(); },120); }
-ws.addChangeListener(e=>{ if(e.isUiEvent||e.type===Blockly.Events.VIEWPORT_CHANGE) return; scheduleRegen(); });
+ws.addChangeListener(e=>{ if(e.isUiEvent||e.type===Blockly.Events.VIEWPORT_CHANGE) return; scheduleRegen(); checkConds(); });
+// warn on condition sockets holding a bare number/variable instead of a comparison
+function checkConds(){ if(ws.isDragging&&ws.isDragging()) return;
+  ws.getAllBlocks(false).forEach(b=>{ const inp={kos_wait_until:'C',kos_until:'C',kos_if:'C',kos_ifelse:'C',kos_when:'C'}[b.type]; if(!inp) return;
+    const c=b.getInputTargetBlock(inp); let w=null;
+    if(!c) w='Add a condition, e.g. the "ALTITUDE < 1000" block from Basics.';
+    else { const chk=c.outputConnection&&c.outputConnection.getCheck(); if(!chk||chk.indexOf('Boolean')<0) w='WAIT UNTIL / IF / UNTIL need a comparison like ALTITUDE < 1000 – not a bare number or variable.'; }
+    b.setWarningText(w); }); }
 // keep Blockly's cached size in sync with its container (tab switches, header wrap, window resize, panel toggle)
 const resizeBlockly=()=>{ if($('#tab-blocks').classList.contains('active')) Blockly.svgResize(ws); };
 window.addEventListener('resize',resizeBlockly); if(window.ResizeObserver) new ResizeObserver(resizeBlockly).observe($('#blocklyDiv'));
@@ -47,6 +54,8 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>showTab(b.datas
 function lint(){ const lines=getCode().split('\n'), w=[]; let depth=0, par=0;
   lines.forEach((raw,i)=>{ let l=raw.replace(/\/\/.*$/,'').replace(/"(?:[^"\\]|\\.)*"/g,'""').trim(); if(!l) return;
     for(const ch of l){ if(ch==='{')depth++; if(ch==='}'){depth--; if(depth<0){w.push(`Line ${i+1}: unexpected "}"`);depth=0;}} if(ch==='(')par++; if(ch===')')par--; }
+    const wu=l.match(/^WAIT\s+UNTIL\s+(.+?)\s*\.$/i);
+    if(wu && !/[<>=]|\b(AND|OR|NOT|TRUE|FALSE)\b|\(/i.test(wu[1])) w.push(`Line ${i+1}: WAIT UNTIL needs a comparison like ALTITUDE < 1000 (found "${wu[1]}")`);
     if(par!==0){w.push(`Line ${i+1}: unbalanced parentheses`);par=0;}
     if(!/[.{}]$/.test(l) && !/^@/.test(l) && !/^(else)$/i.test(l)) w.push(`Line ${i+1}: statement may be missing a period "." → ${l.slice(0,60)}`);
     if(/^(if|until|when|for)\b/i.test(l)&&!/[{]/.test(l)&&!/[{]/.test((lines[i+1]||''))) w.push(`Line ${i+1}: ${l.split(' ')[0].toUpperCase()} without "{" block`);
@@ -92,20 +101,20 @@ $('#copyBtn').onclick=()=>navigator.clipboard&&navigator.clipboard.writeText(get
 
 // ---- Simulation + Python (Pyodide) ----
 const PRESETS={
- orbital:{name:'Kerbal X-lite',stages:[{name:'Booster',wet:18,dry:2.5,thrust_vac:330,thrust_sl:300,isp_vac:310,isp_sl:270,cda:4},{name:'Upper',wet:6,dry:1.5,thrust_vac:60,thrust_sl:15,isp_vac:345,isp_sl:85,cda:0.6}],start:{mode:'pad',alt:0,vx:0,vy:0,active:false},rotation:true,turn_rate:12,tmax:1800,dt:0.05,coast_after_end:true},
+ orbital:{name:'Kerbal X-lite',stages:[{name:'Booster',wet:18,dry:2.5,thrust_vac:330,thrust_sl:300,isp_vac:310,isp_sl:270,cda:4},{name:'Upper',wet:6,dry:1.5,thrust_vac:60,thrust_sl:15,isp_vac:345,isp_sl:85,cda:0.6},{name:'Capsule',kind:'decoupler',wet:1.2,dry:1.2,thrust_vac:0,thrust_sl:0,isp_vac:0,isp_sl:0,cda:1.2},{name:'Parachute',kind:'chute',wet:0.1,dry:0.1,thrust_vac:0,thrust_sl:0,isp_vac:0,isp_sl:0,cda:700}],start:{mode:'pad',alt:0,vx:0,vy:0,active:false},rotation:true,turn_rate:12,tmax:1800,dt:0.05,coast_after_end:true},
  lander:{name:'Lander',stages:[{name:'Lander',wet:4,dry:2,thrust_vac:60,thrust_sl:55,isp_vac:320,isp_sl:280,cda:1}],start:{mode:'air',alt:8000,vx:0,vy:-150,active:true},rotation:true,turn_rate:20,tmax:900,dt:0.05,coast_after_end:true},
  booster:{name:'Booster',stages:[{name:'Booster',wet:10,dry:3,thrust_vac:330,thrust_sl:300,isp_vac:310,isp_sl:270,cda:4}],start:{mode:'air',alt:35000,vx:900,vy:400,active:true},rotation:true,turn_rate:15,tmax:900,dt:0.05,coast_after_end:true}};
-let vessel=JSON.parse(localStorage.getItem('kosblocks.vessel')||'null')||JSON.parse(JSON.stringify(PRESETS.orbital));
-const SCOLS=[['name','name'],['wet','wet t'],['dry','dry t'],['thrust_vac','F vac'],['thrust_sl','F sl'],['isp_vac','Isp vac'],['isp_sl','Isp sl'],['cda','Cd·A']];
+let vessel=JSON.parse(localStorage.getItem('kosblocks.vessel4')||'null')||JSON.parse(JSON.stringify(PRESETS.orbital));
+const SCOLS=[['name','name'],['kind','type'],['wet','wet t'],['dry','dry t'],['thrust_vac','F vac'],['thrust_sl','F sl'],['isp_vac','Isp vac'],['isp_sl','Isp sl'],['cda','Cd·A']];
 function renderVessel(){ $('#vName').value=vessel.name||'';
-  $('#stageTbl').innerHTML='<tr><th>#</th>'+SCOLS.map(c=>`<th>${c[1]}</th>`).join('')+'<th></th></tr>'+vessel.stages.map((s,i)=>`<tr><td>${i+1}</td>`+SCOLS.map(c=>`<td><input data-i="${i}" data-k="${c[0]}" ${c[0]==='name'?'':'type="number" step="any"'} value="${s[c[0]]}"></td>`).join('')+`<td><button data-del="${i}">✕</button></td></tr>`).join('');
+  $('#stageTbl').innerHTML='<tr><th>#</th>'+SCOLS.map(c=>`<th>${c[1]}</th>`).join('')+'<th></th></tr>'+vessel.stages.map((s,i)=>`<tr><td>${i+1}</td>`+SCOLS.map(c=>c[0]==='kind'?`<td><select data-i="${i}" data-k="kind">${['engine','decoupler','chute'].map(k=>`<option ${(s.kind||(s.thrust_vac>0?'engine':'decoupler'))===k?'selected':''}>${k}</option>`).join('')}</select></td>`:`<td><input data-i="${i}" data-k="${c[0]}" ${c[0]==='name'?'':'type="number" step="any"'} value="${s[c[0]]??0}"></td>`).join('')+`<td><button data-del="${i}">✕</button></td></tr>`).join('');
   const st=vessel.start; $('#sMode').value=st.mode; $('#sAlt').value=st.alt; $('#sVx').value=st.vx; $('#sVy').value=st.vy; $('#sActive').checked=!!st.active;
   $('#oRot').checked=vessel.rotation!==false; $('#oTurn').value=vessel.turn_rate; $('#oTmax').value=vessel.tmax; $('#oDt').value=vessel.dt; $('#oCoast').checked=vessel.coast_after_end!==false;
-  $('#stageTbl').querySelectorAll('input').forEach(inp=>inp.onchange=()=>{const s=vessel.stages[inp.dataset.i]; s[inp.dataset.k]=inp.dataset.k==='name'?inp.value:parseFloat(inp.value)||0; saveVessel();});
+  $('#stageTbl').querySelectorAll('input,select').forEach(inp=>inp.onchange=()=>{const s=vessel.stages[inp.dataset.i]; s[inp.dataset.k]=(inp.dataset.k==='name'||inp.dataset.k==='kind')?inp.value:parseFloat(inp.value)||0; saveVessel();});
   $('#stageTbl').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ if(vessel.stages.length>1){vessel.stages.splice(+b.dataset.del,1);saveVessel();renderVessel();} }); }
 function readOpts(){ vessel.name=$('#vName').value; Object.assign(vessel.start,{mode:$('#sMode').value,alt:+$('#sAlt').value||0,vx:+$('#sVx').value||0,vy:+$('#sVy').value||0,active:$('#sActive').checked});
   Object.assign(vessel,{rotation:$('#oRot').checked,turn_rate:+$('#oTurn').value||10,tmax:+$('#oTmax').value||1800,dt:Math.min(0.5,Math.max(0.01,+$('#oDt').value||0.05)),coast_after_end:$('#oCoast').checked}); saveVessel(); }
-function saveVessel(){ localStorage.setItem('kosblocks.vessel',JSON.stringify(vessel)); }
+function saveVessel(){ localStorage.setItem('kosblocks.vessel4',JSON.stringify(vessel)); }
 ['#vName','#sMode','#sAlt','#sVx','#sVy','#sActive','#oRot','#oTurn','#oTmax','#oDt','#oCoast'].forEach(s=>$(s).onchange=readOpts);
 $('#addStage').onclick=()=>{ vessel.stages.push({name:'Stage '+(vessel.stages.length+1),wet:4,dry:1,thrust_vac:60,thrust_sl:15,isp_vac:345,isp_sl:85,cda:0.5}); saveVessel(); renderVessel(); };
 $('#preset').onchange=e=>{ if(PRESETS[e.target.value]){ vessel=JSON.parse(JSON.stringify(PRESETS[e.target.value])); saveVessel(); renderVessel(); } e.target.value=''; };
@@ -236,7 +245,7 @@ $('#resetPy').onclick=()=>pyEd.setValue(PY_DEFAULT);
 let pyodide=null;
 async function ensurePy(){ if(pyodide) return pyodide; $('#pyStatus').textContent='Loading Pyodide…';
   await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js';s.onload=res;s.onerror=()=>rej(new Error('Could not load Pyodide (offline?)'));document.head.appendChild(s);});
-  const py=await loadPyodide(); const src=await (await fetch('sim.py?v=3')).text(); py.FS.writeFile('/home/pyodide/kossim.py',src);
+  const py=await loadPyodide(); const src=await (await fetch('sim.py?v=4')).text(); py.FS.writeFile('/home/pyodide/kossim.py',src);
   py.registerJsModule('_kosbridge',{getCode,setCode,setVar:(n,v)=>{const r=setVar(n,v);refreshTune();regenNow();return r;},getVessel:()=>{readOpts();return JSON.stringify(vessel);},showSim});
   py.runPython('import sys\nsys.path.insert(0,"/home/pyodide")\nimport _kosbridge as _js\n'+PY_HELPERS); pyodide=py; $('#pyStatus').textContent='Pyodide ready'; return py; }
 function regenNow(){ if(linked&&!pureCode){ const code=KOS.workspaceToCode(ws); suppress=true; cm.setValue(code); suppress=false; $('#livePreview').textContent=code; lint(); } }

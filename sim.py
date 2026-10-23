@@ -56,6 +56,20 @@ class LatLng:
         raise KosError(f"GeoCoordinates has no suffix :{name.upper()}")
     def __repr__(self): return f"LATLNG({self.lat:.4f}, {self.lng:.4f})"
 
+class Engine:
+    def __init__(self, sim, j): self.sim, self.j = sim, j
+    def suffix(self, name, args, sim):
+        s = sim.stages[self.j]; n = len(sim.stages)
+        ign = self.j < sim.next
+        if name == 'stage': return float(n - 1 - self.j)
+        if name == 'ignition': return ign
+        if name == 'flameout': return ign and s['fuel'] <= 1e-9
+        if name in ('maxthrust', 'availablethrust', 'thrust'): return sim.maxthrust() if sim.eng == self.j else 0.0
+        if name in ('isp', 'vacuumisp', 'ispat'): return float(s['isp_vac'])
+        if name in ('name', 'title', 'tag'): return s.get('name', 'engine')
+        raise KosError(f"Engine has no suffix :{name.upper()}")
+    def __repr__(self): return f"ENGINE({self.sim.stages[self.j].get('name')})"
+
 class LockVal:
     __slots__ = ('ast',)
     def __init__(self, ast): self.ast = ast
@@ -87,7 +101,7 @@ def lex(src):
 TOGGLES = {'sas', 'rcs', 'gear', 'brakes', 'lights', 'legs', 'panels', 'abort', 'chutes', 'chutessafe',
            'radiators', 'ladders', 'bays', 'deploydrills', 'drills', 'fuelcells', 'isru', 'intakes'} | {f'ag{i}' for i in range(1, 11)}
 UNSUPPORTED = {'run', 'runpath', 'runoncepath', 'switch', 'copypath', 'movepath', 'deletepath', 'log', 'edit',
-               'list', 'on', 'toggle', 'reboot', 'shutdown', 'for', 'add', 'remove', 'rename', 'compile', 'unset'}
+               'on', 'toggle', 'reboot', 'shutdown', 'add', 'remove', 'rename', 'compile', 'unset'}
 
 class Parser:
     def __init__(self, src, warn):
@@ -213,6 +227,10 @@ class Parser:
             self.end(); return ('print', e, at, line)
         if kw in ('clearscreen', 'stage', 'preserve', 'break'):
             self.nxt(); self.end(); return (kw, line)
+        if kw == 'list' and self.peek(1)[0] == 'id' and self.isid('in', 2):
+            self.nxt(); what = self.nxt()[1]; self.expect_id('in'); n = self.expect_id(); self.end(); return ('listof', what, n, line)
+        if kw == 'for':
+            self.nxt(); n = self.expect_id(); self.expect_id('in'); e = self.expr(); b = self.block(); return ('for', n, e, b, line)
         if kw in TOGGLES and (self.isid('on', 1) or self.isid('off', 1)):
             self.nxt(); v = self.nxt()[1] == 'on'; self.end(); return ('toggle', kw, v, line)
         if kw in UNSUPPORTED and not self.isop('(', 1) or kw in ('runpath', 'runoncepath', 'switch', 'copypath'):
@@ -304,6 +322,8 @@ DEFAULT_VESSEL = {
     "stages": [
         {"name": "Booster", "wet": 18.0, "dry": 2.5, "thrust_vac": 330, "thrust_sl": 300, "isp_vac": 310, "isp_sl": 270, "cda": 4.0},
         {"name": "Upper", "wet": 6.0, "dry": 1.5, "thrust_vac": 60, "thrust_sl": 15, "isp_vac": 345, "isp_sl": 85, "cda": 0.6},
+        {"name": "Capsule", "kind": "decoupler", "wet": 1.2, "dry": 1.2, "thrust_vac": 0, "thrust_sl": 0, "isp_vac": 0, "isp_sl": 0, "cda": 1.2},
+        {"name": "Parachute", "kind": "chute", "wet": 0.1, "dry": 0.1, "thrust_vac": 0, "thrust_sl": 0, "isp_vac": 0, "isp_sl": 0, "cda": 700},
     ],
     "start": {"mode": "pad", "alt": 0, "vx": 0, "vy": 0, "active": False},
     "rotation": True, "turn_rate": 12.0, "tmax": 1800.0, "dt": 0.05, "coast_after_end": True,
@@ -320,14 +340,24 @@ class Sim:
         self.dt = float(v['dt']); self.tmax = float(v['tmax'])
         self.omega = OMEGA if v.get('rotation', True) else 0.0
         self.turn_rate = math.radians(float(v['turn_rate']))
-        self.stages = [dict(s, fuel=max(0.0, float(s['wet']) - float(s['dry']))) for s in v['stages']]
+        self.stages = []
+        for s0 in v['stages']:
+            s1 = dict(s0); s1['fuel'] = max(0.0, float(s1['wet']) - float(s1['dry']))
+            if not s1.get('kind'): s1['kind'] = 'engine' if float(s1.get('thrust_vac', 0) or 0) > 0 else 'decoupler'
+            if s1['kind'] != 'engine': s1['fuel'] = 0.0
+            for k in ('thrust_vac', 'thrust_sl', 'isp_vac', 'isp_sl', 'cda'): s1[k] = float(s1.get(k, 0) or 0)
+            if s1['kind'] == 'engine' and s1['isp_vac'] <= 0: s1['isp_vac'] = s1['isp_sl'] = 300.0
+            self.stages.append(s1)
+        self.chute_armed = self.chute_force = self.chute_open = self.chute_broken = False; self.chute_t = 0.0
         st = v['start']
         alt = float(st.get('alt', 0) or 0)
         self.pos = Vec(R_KERBIN + alt, 0)
         up = Vec(1, 0); east = Vec(0, 1)
         self.vel = self.rotv(self.pos) + up * float(st.get('vy', 0) or 0) + east * float(st.get('vx', 0) or 0)
-        self.active = 0 if (st.get('active') or st.get('mode') == 'air') and self.stages else -1
-        self.attached = 0
+        self.next = 0; self.eng = None; self.attached = 0
+        if (st.get('active') or st.get('mode') == 'air') and self.stages:
+            self.next = 1
+            if self.stages[0]['kind'] == 'engine': self.eng = 0
         self.t = 0.0
         self.throttle = 0.0; self.pilot_throttle = 0.0
         self.landed = alt <= 0.5; self.flown = False; self.landed_since = None
@@ -365,25 +395,33 @@ class Sim:
         return 0.0 if h >= ATM_H else math.exp(-max(h, 0) / SCALE_H) * (1 - max(h, 0) / ATM_H) ** 0.3
     def mass(self): return sum(s['dry'] + s['fuel'] for s in self.stages[self.attached:]) or 0.001
     def cur_stage(self):
-        return self.stages[self.active] if 0 <= self.active < len(self.stages) else None
+        return self.stages[self.eng] if self.eng is not None and self.eng >= self.attached else None
+    def engines(self):
+        return [Engine(self, j) for j in range(self.attached, len(self.stages)) if self.stages[j]['kind'] == 'engine']
+    def has_chute(self):
+        return any(s['kind'] == 'chute' for s in self.stages[self.attached:])
     def maxthrust(self):
         s = self.cur_stage()
-        if not s or s['fuel'] <= 1e-9: return 0.0
+        if not s or s['fuel'] <= 1e-9 or s['thrust_vac'] <= 0: return 0.0
         p = self.pressure()
         return s['thrust_vac'] + (s['thrust_sl'] - s['thrust_vac']) * p
     def isp(self):
         s = self.cur_stage(); p = self.pressure()
         return s['isp_vac'] + (s['isp_sl'] - s['isp_vac']) * p
     def stagenum(self):
-        return len(self.stages) if self.active < 0 else max(0, len(self.stages) - self.active - 1)
+        return max(0, len(self.stages) - self.next)
     def do_stage(self):
-        if self.active < 0:
-            self.active = 0
-        elif self.active + 1 < len(self.stages):
-            self.attached = self.active + 1; self.active += 1
-        else:
+        if self.next >= len(self.stages):
             self.warn(f"STAGE called but no stages left (t={self.t:.1f}s)"); return
-        self.events.append((self.t, f"STAGE → {self.stages[self.active]['name']}"))
+        i = self.next; s = self.stages[i]; self.next += 1
+        msg = f"STAGE → {s['name']} ({s['kind']})"
+        if s['kind'] in ('engine', 'decoupler') and i > 0 and i > self.attached:
+            dropped = [x['name'] for x in self.stages[self.attached:i]]
+            self.attached = i
+            if dropped: msg += f", dropped {', '.join(dropped)}"
+        if s['kind'] == 'engine': self.eng = i
+        if s['kind'] == 'chute': self.chute_armed = True; msg += ', chutes armed'
+        self.events.append((self.t, msg))
     def orbit(self):
         if self._orb is not None: return self._orb
         r = self.pos.mag(); v2 = self.vel.dot(self.vel)
@@ -451,6 +489,7 @@ class Sim:
             'latitude': lambda: 0.0, 'longitude': lambda: self.longitude(),
             'geoposition': lambda: LatLng(0, self.longitude()),
             'stage:liquidfuel': lambda: (self.cur_stage() or {'fuel': 0})['fuel'] * 90.0,
+            'chutes': lambda: self.chute_open, 'chutessafe': lambda: self.chute_armed,
             'stage:oxidizer': lambda: (self.cur_stage() or {'fuel': 0})['fuel'] * 110.0,
             'stage:solidfuel': lambda: 0.0, 'stage:number': lambda: self.stagenum(),
             'stagenum': lambda: self.stagenum(), 'stage:ready': lambda: True,
@@ -530,6 +569,9 @@ class Sim:
         raise KosError(f"unknown operator {op}")
     def apply_suffix(self, v, nm, args, scopes):
         if hasattr(v, 'suffix'): return v.suffix(nm, args, self)
+        if isinstance(v, list):
+            if nm == 'length': return float(len(v))
+            if nm == 'empty': return len(v) == 0
         if isinstance(v, str):
             if nm == 'length': return float(len(v))
             if nm == 'toupper': return v.upper()
@@ -573,7 +615,7 @@ class Sim:
             'hudtext': lambda txt, *a: self.out(f"[HUD] {kstr(txt)}", hud=True),
             'v': lambda x, y, z=0: Vec(x, y), 'vang': lambda a, b: d(math.acos(max(-1, min(1, a.norm().dot(b.norm()))))),
             'char': lambda c: chr(int(c)), 'unchar': lambda s: float(ord(s[0])),
-            'clearscreen': lambda: self.clear(),
+            'clearscreen': lambda: self.clear(), 'list': lambda *a: list(a),
         }
         f = B.get(name)
         if f is None:
@@ -667,7 +709,22 @@ class Sim:
             yield
             while self.t < until: yield
         elif k == 'waituntil':
+            v0 = self.ev(s[1], scopes)
+            if not isinstance(v0, bool):
+                self.warn(f"line {s[2]}: WAIT UNTIL needs a comparison like ALTITUDE < 1000 (got a {type(v0).__name__} value – it is treated as already true)")
             while not self.truthy(self.ev(s[1], scopes)): yield
+        elif k == 'listof':
+            if s[1] == 'engines': self.set_var(s[2], self.engines(), scopes)
+            else:
+                self.warn(f"line {s[3]}: LIST {s[1].upper()} is not simulated – empty list"); self.set_var(s[2], [], scopes)
+        elif k == 'for':
+            seq = self.ev(s[2], scopes)
+            if not isinstance(seq, list): raise KosError(f"line {s[4]}: FOR needs a list")
+            try:
+                for item in list(seq):
+                    sc = scopes + [{s[1]: item}]
+                    yield from self.exec_block(s[3][1], sc, newscope=False)
+            except _Break: pass
         elif k == 'print':
             v = kstr(self.ev(s[1], scopes))
             if s[2]:
@@ -684,6 +741,8 @@ class Sim:
         elif k == 'toggle':
             if s[1] == '?': self.warn(f"line {s[3]}: unknown ON/OFF target – ignored"); return
             self.flags[s[1]] = s[2]
+            if s[2] and s[1] == 'chutes': self.chute_force = True
+            if s[2] and s[1] == 'chutessafe': self.chute_armed = True
             self.events.append((self.t, f"{s[1].upper()} {'ON' if s[2] else 'OFF'}"))
         elif k == 'expr':
             e = s[1]
@@ -734,11 +793,22 @@ class Sim:
         thrust = self.throttle * self.maxthrust()
         acc = self.facing * (thrust / m)
         vs = self.srfvel(); vsm = vs.mag()
-        rho = RHO0 * self.pressure()
-        cda = sum(s['cda'] for s in self.stages[self.attached:])
+        pr = self.pressure(); rho = RHO0 * pr
+        cda = sum(s['cda'] for s in self.stages[self.attached:] if s['kind'] != 'chute')
+        if self.has_chute() and not self.chute_broken:
+            if not self.chute_open and (self.chute_force or (self.chute_armed and pr > 0.04 and vsm < 250)):
+                self.chute_open = True; self.chute_t = self.t
+                self.events.append((self.t, f"Parachutes open at {vsm:.0f} m/s, {self.altitude():.0f} m"))
+            if self.chute_open:
+                if vsm > 350 and pr > 0.01:
+                    self.chute_broken = True; self.chute_open = False
+                    self.events.append((self.t, 'Parachutes ripped off (too fast)')); self.warn(f"Parachutes destroyed: deployed at {vsm:.0f} m/s (>350)")
+                else:
+                    frac = min(1.0, (self.t - self.chute_t) / 2.5)
+                    cda += frac * sum(s['cda'] for s in self.stages[self.attached:] if s['kind'] == 'chute')
         q = 0.5 * rho * vsm * vsm
         self.max_q = max(self.max_q, q)
-        if vsm > 1e-6: acc = acc - vs * (q * cda / 1000.0 / m / vsm)
+        kdrag = 0.5 * rho * cda / (1000.0 * m)
         g = self.pos * (-MU / r ** 3)
         acc = acc + g
         if self.landed:
@@ -748,6 +818,9 @@ class Sim:
             else:
                 self.landed = False
         self.vel = self.vel + acc * dt
+        if kdrag > 0:   # implicit quadratic drag: stable even for huge parachute areas
+            rv = self.rotv(self.pos); vs2 = self.vel - rv
+            self.vel = rv + vs2 * (1.0 / (1.0 + kdrag * vs2.mag() * dt))
         self.pos = self.pos + self.vel * dt
         if thrust > 0:
             s = self.cur_stage()
@@ -864,7 +937,7 @@ class SimResult:
             'apoapsis': round(o['ap']), 'periapsis': round(o['pe']), 'eccentricity': round(o['e'], 4),
             'dv_used': round(s.dv_used, 1), 'max_speed': round(s.max_speed, 1), 'final_speed': round(s.srfvel().mag(), 1),
             'max_q_kpa': round(s.max_q / 1000, 2), 'fuel_left_t': round(fuel_left, 3), 'mass_t': round(s.mass(), 3),
-            'stages_left': s.stagenum(), 'error': s.error,
+            'stages_left': s.stagenum(), 'chutes_open': s.chute_open, 'error': s.error,
         }
         self.log = s.log; self.screen = s.screen; self.series = s.series
         self.events = s.events; self.warnings = s.warnings

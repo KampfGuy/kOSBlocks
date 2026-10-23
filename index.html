@@ -4,7 +4,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/codemirror@5.65.16/lib/codemirror.css">
 <link rel="stylesheet" href="https://unpkg.com/codemirror@5.65.16/theme/material-darker.css">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 <script src="https://unpkg.com/blockly@10.4.3/blockly_compressed.js"></script>
 <script src="https://unpkg.com/blockly@10.4.3/blocks_compressed.js"></script>
 <script src="https://unpkg.com/blockly@10.4.3/msg/en.js"></script>
@@ -34,7 +34,7 @@
 <button id="runPy">▶ Run custom Python</button><button id="resetPy">↺ Reset example</button><span id="pyStatus" class="pill">Pyodide loads on first run</span></div>
 <div class="simgrid">
  <div class="card"><h4>Vessel</h4><input id="vName" class="wide" title="Vessel name"><table id="stageTbl"></table>
-  <button id="addStage">+ stage</button> <span class="hint2">Row 1 fires first (bottom stage). Masses t, thrust kN, Isp s, Cd·A m².</span>
+  <button id="addStage">+ stage</button> <span class="hint2">Row 1 fires first (bottom). type: engine / decoupler (no engine) / chute (Cd·A = open-chute area, ~700 m²). Masses t, thrust kN, Isp s.</span>
   <h4>Start</h4><div class="opts"><label>mode <select id="sMode"><option value="pad">launch pad</option><option value="air">in flight</option></select></label>
   <label>alt m <input id="sAlt" type="number"></label><label>horiz m/s <input id="sVx" type="number"></label><label>vert m/s <input id="sVy" type="number"></label>
   <label><input id="sActive" type="checkbox"> stage 1 already active</label></div>
@@ -62,5 +62,5 @@
 <li>Projects are saved in your browser's localStorage.</li></ul>
 <p>kOS docs: <a href="https://ksp-kos.github.io/KOS/" target="_blank">ksp-kos.github.io/KOS</a></p></section>
 </main>
-<script src="blocks.js?v=3"></script><script src="app.js?v=3"></script>
+<script src="blocks.js?v=4"></script><script src="app.js?v=4"></script>
 </body></html>
