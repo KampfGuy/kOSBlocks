@@ -7,12 +7,25 @@ CodeMirror.defineSimpleMode('kerboscript',{start:[
  {regex:/\b(?:altitude|apoapsis|periapsis|verticalspeed|groundspeed|maxthrust|latitude|longitude|throttle|steering|sas|rcs|gear|brakes|lights|legs|abort|ag\d+)\b/i,token:'atom'},
  {regex:/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/i,token:'number'},{regex:/[{}()]/,token:'bracket'},{regex:/[-+*\/^<>=:.,]/,token:'operator'}],meta:{lineComment:'//'}});
 
-const ws=Blockly.inject('blocklyDiv',{toolbox:TOOLBOX,theme:Blockly.Theme.defineTheme('kosdark',{base:Blockly.Themes.Classic,componentStyles:{workspaceBackgroundColour:'#0b1122',toolboxBackgroundColour:'#0f1730',toolboxForegroundColour:'#dce6ff',flyoutBackgroundColour:'#16203a',flyoutOpacity:0.95,scrollbarColour:'#2f4478',insertionMarkerColour:'#fff'}}),renderer:'zelos',grid:{spacing:24,length:2,colour:'#1b2747',snap:true},zoom:{controls:true,wheel:true,startScale:0.8},trashcan:true});
+const ws=Blockly.inject('blocklyDiv',{toolbox:TOOLBOX,theme:Blockly.Theme.defineTheme('kosdark',{base:Blockly.Themes.Classic,componentStyles:{workspaceBackgroundColour:'#0b1122',toolboxBackgroundColour:'#0f1730',toolboxForegroundColour:'#dce6ff',flyoutBackgroundColour:'#16203a',flyoutOpacity:0.95,scrollbarColour:'#2f4478',insertionMarkerColour:'#fff'}}),renderer:'zelos',grid:{spacing:24,length:2,colour:'#1b2747',snap:true},zoom:{controls:true,wheel:false,pinch:true,startScale:0.75,maxScale:2,minScale:0.3,scaleSpeed:1.15},move:{scrollbars:true,drag:true,wheel:true},trashcan:true,sounds:false});
 const cm=CodeMirror($('#codeWrap'),{mode:'kerboscript',theme:'material-darker',lineNumbers:true,readOnly:true,indentUnit:2});
 let linked=true, pureCode=false, suppress=false;
 
 function regen(){ if(!linked||pureCode) return; const code=KOS.workspaceToCode(ws); $('#livePreview').textContent=code; suppress=true; cm.setValue(code); suppress=false; lint(); refreshTune(); }
-ws.addChangeListener(e=>{ if(e.isUiEvent) return; regen(); });
+// Regenerate code at most once per frame and never in the middle of a drag (heavy DOM work during a
+// drag can make Blockly drags stutter/fail on slower machines).
+let regenTimer=null;
+function scheduleRegen(){ clearTimeout(regenTimer); regenTimer=setTimeout(()=>{ if(ws.isDragging&&ws.isDragging()){scheduleRegen();return;} regen(); },120); }
+ws.addChangeListener(e=>{ if(e.isUiEvent||e.type===Blockly.Events.VIEWPORT_CHANGE) return; scheduleRegen(); });
+// keep Blockly's cached size in sync with its container (tab switches, header wrap, window resize, panel toggle)
+const resizeBlockly=()=>{ if($('#tab-blocks').classList.contains('active')) Blockly.svgResize(ws); };
+window.addEventListener('resize',resizeBlockly); if(window.ResizeObserver) new ResizeObserver(resizeBlockly).observe($('#blocklyDiv'));
+// live preview: hidden by default, toggle remembers choice
+function setPreview(on){ $('#tab-blocks').classList.toggle('preview-on',on); $('#togglePreview').textContent=on?'Hide code ▸':'◂ Show code'; localStorage.setItem('kosblocks.preview',on?'1':'0'); setTimeout(resizeBlockly,0); }
+$('#togglePreview').onclick=()=>setPreview(!$('#tab-blocks').classList.contains('preview-on'));
+setPreview(localStorage.getItem('kosblocks.preview')==='1');
+$('#relink').onclick=()=>{ if(pureCode) setMode('blocks'); else if(confirm('Re-link: code will be regenerated from blocks (text edits lost). Continue?')) setLinked(true); };
+function updateBanner(){ $('#unlinkedBanner').style.display=(!linked||pureCode)?'':'none'; }
 function getCode(){return cm.getValue();}
 function setCode(t){ // writing text implies unlinking from blocks
   if(linked&&!pureCode){ setLinked(false); }
@@ -20,14 +33,14 @@ function setCode(t){ // writing text implies unlinking from blocks
 cm.on('change',()=>{ if(suppress) return; lint(); refreshTune(); $('#livePreview').textContent=cm.getValue(); });
 
 function setLinked(v){ linked=v; $('#editSelf').checked=!v; cm.setOption('readOnly',v&&!pureCode);
-  $('#linkState').textContent=pureCode?'pure code mode':(v?'linked to blocks':'unlinked – blocks ignored'); $('#linkState').classList.toggle('warn',!v||pureCode); if(v) regen(); }
+  $('#linkState').textContent=pureCode?'pure code mode':(v?'linked to blocks':'unlinked – blocks ignored'); $('#linkState').classList.toggle('warn',!v||pureCode); if(v) regen(); updateBanner(); }
 $('#editSelf').onchange=e=>{ if(!e.target.checked){ if(!confirm('Switching back to blocks will REGENERATE the code from blocks and discard your text edits. Continue?')){e.target.checked=true;return;} } setLinked(!e.target.checked); };
 function setMode(m){ pureCode=m==='code'; $('#mode').value=m; document.querySelector('[data-tab=blocks]').style.display=pureCode?'none':'';
   $('#editSelf').disabled=pureCode; if(pureCode){ linked=false; cm.setOption('readOnly',false); showTab('code'); } else { if(getCode().trim()&&!confirm('Return to Blocks mode? Code will be regenerated from blocks (text edits lost).')){ $('#mode').value='code'; pureCode=true; return;} linked=true; } setLinked(linked); }
 $('#mode').onchange=e=>setMode(e.target.value);
 
 function showTab(t){ document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===t)); document.querySelectorAll('.tab').forEach(s=>s.classList.toggle('active',s.id==='tab-'+t));
-  if(t==='blocks') Blockly.svgResize(ws); if(t==='code') cm.refresh(); if(t==='python') pyEd.refresh(); if(t==='tune') refreshTune(); }
+  if(t==='blocks') setTimeout(()=>Blockly.svgResize(ws),0); if(t==='code') cm.refresh(); if(t==='python') pyEd.refresh(); if(t==='tune') refreshTune(); }
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 
 // ---- Linter ----
@@ -223,7 +236,7 @@ $('#resetPy').onclick=()=>pyEd.setValue(PY_DEFAULT);
 let pyodide=null;
 async function ensurePy(){ if(pyodide) return pyodide; $('#pyStatus').textContent='Loading Pyodide…';
   await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js';s.onload=res;s.onerror=()=>rej(new Error('Could not load Pyodide (offline?)'));document.head.appendChild(s);});
-  const py=await loadPyodide(); const src=await (await fetch('sim.py')).text(); py.FS.writeFile('/home/pyodide/kossim.py',src);
+  const py=await loadPyodide(); const src=await (await fetch('sim.py?v=3')).text(); py.FS.writeFile('/home/pyodide/kossim.py',src);
   py.registerJsModule('_kosbridge',{getCode,setCode,setVar:(n,v)=>{const r=setVar(n,v);refreshTune();regenNow();return r;},getVessel:()=>{readOpts();return JSON.stringify(vessel);},showSim});
   py.runPython('import sys\nsys.path.insert(0,"/home/pyodide")\nimport _kosbridge as _js\n'+PY_HELPERS); pyodide=py; $('#pyStatus').textContent='Pyodide ready'; return py; }
 function regenNow(){ if(linked&&!pureCode){ const code=KOS.workspaceToCode(ws); suppress=true; cm.setValue(code); suppress=false; $('#livePreview').textContent=code; lint(); } }

@@ -4,7 +4,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/codemirror@5.65.16/lib/codemirror.css">
 <link rel="stylesheet" href="https://unpkg.com/codemirror@5.65.16/theme/material-darker.css">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=3">
 <script src="https://unpkg.com/blockly@10.4.3/blockly_compressed.js"></script>
 <script src="https://unpkg.com/blockly@10.4.3/blocks_compressed.js"></script>
 <script src="https://unpkg.com/blockly@10.4.3/msg/en.js"></script>
@@ -19,7 +19,7 @@
 <input id="projName" value="my_project" title="Project name"><button id="saveBtn">💾 Save</button><select id="loadSel"><option value="">📂 Load…</option></select><button id="delBtn" title="Delete selected project">🗑</button>
 </div></header>
 <main>
-<section id="tab-blocks" class="tab active"><div id="blocklyDiv"></div><div class="side"><h3>Live kerboscript</h3><pre id="livePreview"></pre></div></section>
+<section id="tab-blocks" class="tab active"><div id="blocklyDiv"></div><button id="togglePreview" class="floatbtn">◂ Show code</button><div id="unlinkedBanner" class="banner" style="display:none">⚠ Code is unlinked from blocks (you are editing text). Block changes won't update the code. <button id="relink">Re-link blocks</button></div><div class="side"><h3>Live kerboscript</h3><pre id="livePreview"></pre></div></section>
 <section id="tab-code" class="tab"><div class="bar">
 <label><input type="checkbox" id="editSelf"> ✏️ Edit code myself (unlink from blocks)</label>
 <span id="linkState" class="pill">linked to blocks</span>
@@ -62,5 +62,5 @@
 <li>Projects are saved in your browser's localStorage.</li></ul>
 <p>kOS docs: <a href="https://ksp-kos.github.io/KOS/" target="_blank">ksp-kos.github.io/KOS</a></p></section>
 </main>
-<script src="blocks.js"></script><script src="app.js"></script>
+<script src="blocks.js?v=3"></script><script src="app.js?v=3"></script>
 </body></html>

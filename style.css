@@ -35,3 +35,14 @@ main{flex:1;position:relative;min-height:0}.tab{display:none;position:absolute;i
 .term.log{height:150px;color:#b8f5c8}#simWarn{font-size:12px;color:#ffc27a;margin-top:4px}
 .charts{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:0 10px}.charts canvas{width:100%;background:#060a16;border:1px solid #24345e;border-radius:6px}
 .pyrow{height:420px;margin:0 10px 10px;border:1px solid #24345e}
+/* declutter */
+header{padding:4px 10px;gap:10px}.logo{font-size:17px}nav button{padding:6px 10px;font-size:14px}
+header button,header select,header input{padding:4px 8px;font-size:12px}#projName{width:110px}
+#tab-blocks{position:absolute}#blocklyDiv{position:absolute;inset:0;right:0}
+#tab-blocks .side{display:none;position:absolute;top:0;right:0;bottom:0;width:min(420px,38%);background:#060a16;z-index:5}
+#tab-blocks.preview-on .side{display:flex}#tab-blocks.preview-on #blocklyDiv{right:min(420px,38%)}
+.floatbtn{position:absolute;top:8px;right:12px;z-index:6;opacity:.9}#tab-blocks.preview-on .floatbtn{right:calc(min(420px,38%) + 12px)}
+.banner{position:absolute;left:50%;transform:translateX(-50%);bottom:10px;z-index:6;background:#4a2a10;color:#ffd9a8;padding:6px 10px;border-radius:6px;font-size:13px}
+.blocklyTreeRow{height:26px!important;line-height:26px!important;margin-bottom:1px!important}.blocklyTreeLabel{font-size:13px!important}
+.blocklyFlyoutLabelText{fill:#9fb3e0!important;font-size:12px}
+@media (max-width:1100px){.logo b{display:none}#projName{width:80px}}

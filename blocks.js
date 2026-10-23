@@ -16,6 +16,8 @@ def('kos_toggle','%1 %2',[{type:'field_dropdown',name:'W',options:['SAS','RCS','
 def('kos_wait','wait %1 seconds',[V('S','Number')],ST(C.flight));
 def('kos_wait_until','wait until %1',[V('C','Boolean')],ST(C.flight));
 def('kos_mainthrottle_zero','set pilot main throttle to 0',[],ST(C.flight));
+def('kos_stage_wait','STAGE then wait %1 s',[V('S','Number')],ST(C.flight));
+def('kos_autostage','auto-stage when %1',[{type:'field_dropdown',name:'W',options:[['thrust drops to 0','THRUST'],['stage liquid fuel empty','FUEL']]}],ST(C.flight));
 // Telemetry
 const TELE=[['ALTITUDE','ALTITUDE'],['APOAPSIS','APOAPSIS'],['PERIAPSIS','PERIAPSIS'],['surface speed','SHIP:VELOCITY:SURFACE:MAG'],['orbital speed','SHIP:VELOCITY:ORBIT:MAG'],['VERTICALSPEED','VERTICALSPEED'],['GROUNDSPEED','GROUNDSPEED'],['SHIP:MASS','SHIP:MASS'],['MAXTHRUST','MAXTHRUST'],['LATITUDE','LATITUDE'],['LONGITUDE','LONGITUDE'],['ETA:APOAPSIS','ETA:APOAPSIS'],['ETA:PERIAPSIS','ETA:PERIAPSIS'],['STAGE:LIQUIDFUEL','STAGE:LIQUIDFUEL'],['STAGE:OXIDIZER','STAGE:OXIDIZER'],['SOLIDFUEL','STAGE:SOLIDFUEL'],['radar altitude','ALT:RADAR'],['THROTTLE','THROTTLE'],['TIME:SECONDS','TIME:SECONDS'],['BODY:MU','BODY:MU'],['BODY:RADIUS','BODY:RADIUS']];
 def('kos_tele','%1',[{type:'field_dropdown',name:'T',options:TELE}],EX(C.tele,'Number'));
@@ -87,7 +89,9 @@ const STMT={
  kos_steer_heading:b=>`LOCK STEERING TO HEADING(${val(b,'DIR','90')}, ${val(b,'PITCH','90')}).\n`,
  kos_steer_dir:b=>`LOCK STEERING TO ${f(b,'D')==='X'?'UP':f(b,'D')}.\n`,
  kos_lock_throttle:b=>`LOCK THROTTLE TO ${val(b,'T','1')}.\n`, kos_unlock:b=>`UNLOCK ${f(b,'W')}.\n`,
- kos_stage:()=>'STAGE.\n', kos_toggle:b=>`${f(b,'W')} ${f(b,'S')}.\n`,
+ kos_stage:()=>'STAGE.\n',
+ kos_stage_wait:b=>`STAGE.\nWAIT ${val(b,'S','1')}.\n`,
+ kos_autostage:b=>`WHEN ${f(b,'W')==='FUEL'?'STAGE:LIQUIDFUEL < 0.1':'MAXTHRUST = 0'} AND SHIP:STATUS <> "PRELAUNCH" THEN {\n${IND}PRINT "Auto-staging".\n${IND}STAGE.\n${IND}WAIT 0.5.\n${IND}IF SHIP:STAGENUM > 0 { PRESERVE. }\n}\n`, kos_toggle:b=>`${f(b,'W')} ${f(b,'S')}.\n`,
  kos_wait:b=>`WAIT ${val(b,'S','1')}.\n`, kos_wait_until:b=>`WAIT UNTIL ${val(b,'C','TRUE')}.\n`,
  kos_mainthrottle_zero:()=>'SET SHIP:CONTROL:PILOTMAINTHROTTLE TO 0.\n',
  kos_if:b=>`IF ${val(b,'C','TRUE')} {\n${body(b,'DO')}}\n`,
@@ -205,7 +209,8 @@ KOS.workspaceToCode=function(ws){
 };
 
 const TOOLBOX={kind:'categoryToolbox',contents:[
- {kind:'category',name:'Flight',colour:C.flight,contents:['kos_steer_heading','kos_steer_dir','kos_lock_throttle','kos_unlock','kos_stage','kos_toggle','kos_wait','kos_wait_until','kos_mainthrottle_zero'].map(t=>({kind:'block',type:t,inputs:t==='kos_steer_heading'?{DIR:{shadow:{type:'kos_num',fields:{N:90}}},PITCH:{shadow:{type:'kos_num',fields:{N:90}}}}:t==='kos_lock_throttle'?{T:{shadow:{type:'kos_num',fields:{N:1}}}}:t==='kos_wait'?{S:{shadow:{type:'kos_num',fields:{N:1}}}}:undefined}))},
+{kind:'category',name:'⭐ Basics',colour:'#3fbf80',contents:[{kind:'label',text:'Waiting'},{kind:'block',type:'kos_wait',inputs:{S:{shadow:{type:'kos_num',fields:{N:1}}}}},{kind:'block',type:'kos_wait_until',inputs:{C:{block:{type:'kos_compare',fields:{OP:'>'},inputs:{A:{block:{type:'kos_tele',fields:{T:'ALTITUDE'}}},B:{shadow:{type:'kos_num',fields:{N:10000}}}}}}}},{kind:'label',text:'Staging'},{kind:'block',type:'kos_stage'},{kind:'block',type:'kos_stage_wait',inputs:{S:{shadow:{type:'kos_num',fields:{N:1}}}}},{kind:'block',type:'kos_autostage'},{kind:'block',type:'kos_autostage',fields:{W:'FUEL'}},{kind:'label',text:'Control'},{kind:'block',type:'kos_lock_throttle',inputs:{T:{shadow:{type:'kos_num',fields:{N:1}}}}},{kind:'block',type:'kos_steer_heading',inputs:{DIR:{shadow:{type:'kos_num',fields:{N:90}}},PITCH:{shadow:{type:'kos_num',fields:{N:90}}}}},{kind:'block',type:'kos_print',inputs:{X:{shadow:{type:'kos_text'}}}}]},
+ {kind:'category',name:'Flight',colour:C.flight,contents:['kos_steer_heading','kos_steer_dir','kos_lock_throttle','kos_unlock','kos_stage','kos_stage_wait','kos_autostage','kos_toggle','kos_wait','kos_wait_until','kos_mainthrottle_zero'].map(t=>({kind:'block',type:t,inputs:t==='kos_steer_heading'?{DIR:{shadow:{type:'kos_num',fields:{N:90}}},PITCH:{shadow:{type:'kos_num',fields:{N:90}}}}:t==='kos_lock_throttle'?{T:{shadow:{type:'kos_num',fields:{N:1}}}}:(t==='kos_wait'||t==='kos_stage_wait')?{S:{shadow:{type:'kos_num',fields:{N:1}}}}:undefined}))},
  {kind:'category',name:'Telemetry',colour:C.tele,contents:[{kind:'block',type:'kos_tele'},{kind:'block',type:'kos_tele',fields:{T:'APOAPSIS'}},{kind:'block',type:'kos_tele',fields:{T:'SHIP:VELOCITY:SURFACE:MAG'}},{kind:'block',type:'kos_tele',fields:{T:'STAGE:LIQUIDFUEL'}},{kind:'block',type:'kos_twr'}]},
  {kind:'category',name:'Logic & Loops',colour:C.logic,contents:['kos_if','kos_ifelse','kos_until','kos_from','kos_when','kos_break','kos_compare','kos_andor','kos_not','kos_bool'].map(t=>({kind:'block',type:t}))},
  {kind:'category',name:'Math',colour:C.math,contents:['kos_num','kos_arith','kos_func1','kos_minmax','kos_const','kos_raw_expr'].map(t=>({kind:'block',type:t}))},
